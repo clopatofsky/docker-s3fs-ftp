@@ -1,130 +1,156 @@
-docker-s3fs
-===========
+# fauria/vsftpd
 
-**[S3fs][s3fs]** docker build for version 1.83.
+![docker_logo](https://raw.githubusercontent.com/fauria/docker-vsftpd/master/docker_139x115.png)![docker_fauria_logo](https://raw.githubusercontent.com/fauria/docker-vsftpd/master/docker_fauria_161x115.png)
 
-- [Docker engine after 1.10](#docker-egnine-after-1.10)
-- [Docker engine before 1.10](#docker-engine-before-1.10)
+[![Docker Pulls](https://img.shields.io/docker/pulls/fauria/vsftpd.svg?style=plastic)](https://hub.docker.com/r/fauria/vsftpd/)
+[![Docker Build Status](https://img.shields.io/docker/build/fauria/vsftpd.svg?style=plastic)](https://hub.docker.com/r/fauria/vsftpd/builds/)
+[![](https://images.microbadger.com/badges/image/fauria/vsftpd.svg)](https://microbadger.com/images/fauria/vsftpd "fauria/vsftpd")
 
-### <a name="docker-engine-after-1.10" ></a> Docker engine after 1.10
+This Docker container implements a vsftpd server, with the following features:
 
-Docker engine 1.10 added a new feature which allows containers to share the host mount namespace. This feature makes it possible to mount a s3fs container file system to a host file system through a shared mount, providing a persistent network storage with S3 backend.
+ * Centos 7 base image.
+ * vsftpd 3.0
+ * Virtual users
+ * Passive mode
+ * Logging to a file or STDOUT.
 
-**Prerequsites**
+### Installation from [Docker registry hub](https://registry.hub.docker.com/u/fauria/vsftpd/).
 
-* Docker engine 1.10.x
-* If the docker service is managed by systemd, you need to remove __MountFlags=slave__. See [issue](https://github.com/docker/docker/pull/22806). Example to fix this on CoreOS:
+You can download the image with the following command:
 
-		# cp /usr/lib/systemd/system/docker.service /etc/systemd/system/
-		# sed -i 's/MountFlags=slave/#MountFlags=slave/' /etc/systemd/system/docker.service
-		# systemctl daemon-reload
-		# systemctl restart docker.service
+```bash
+docker pull fauria/vsftpd
+```
 
-* Make a shared mountpoint on host
-
-		# mkdir /mnt/mydata
-		# mount --bind /mnt/mydata /mnt/mydata
-		# mount --make-shared /mnt/mydata
-		# findmnt -o TARGET,PROPAGATION /mnt/mydata
-		TARGET            PROPAGATION
-		/mnt/mydata		 shared
-
-* Create AWS credential file (or use role-based crentials)
-
-		# echo "<accessId>:<acessSecrect>" > /root/.s3fs
-		# chmod 400 /root/.s3fs
-
-**Run the S3fs container**
-
-**As a systemd service**
-
-Create a systemd unit /etc/systemd/system/s3fs.service with the following content:
-
-	[Unit]
-	Description=S3fs Service
-
-	[Service]
-	ExecStartPre=-/usr/bin/docker kill %n
-	ExecStartPre=-/usr/bin/docker rm %n
-	ExecStart=/usr/bin/docker run --rm --name %n -v /root/.s3fs:/root/.s3fs --security-opt apparmor:unconfined --cap-add mknod --cap-add sys_admin --device=/dev/fuse -v /mnt/mydata:/m
-	nt/mydata:shared xueshanf/s3fs /usr/bin/s3fs -f -o allow_other -o use_cache=/tmp -o passwd_file=/root/.s3fs <bucket> /mnt/mydata
-	TimeoutStartSec=5min
-	ExecStop=-/usr/bin/docker stop %n
-	RestartSec=5
-	Restart=always
-
-It is important to use the **-f** flag to keep the s3fs container running in foreground.
-
-Start the unit:
-
-	# systemctl start s3fs.service
-
-Now you should be able to see file system under /mnt/mydata on host. Changes you make there will be reflected on the S3 bucket, and shared by other hosts using the system s3fs.service unit.
-
-Note that, if you previously created the files in the S3 bucket with other tools such as s3cmd, awscli, the s3fs file system won't be able to get file ownership and mode correctly. You will see directories listed with permissions like  "d------". To fix this, you can correct the permissions under /mnt/mydata on host. s3fs will re-upload s3fs specific z-amz-metadata-* headers.
-
-**With docker-compose**
-
-Get [docker-compose](https://docs.docker.com/compose/install/)
-
-Create a shared mount on the host as described above.
-
-You can use the `docker-compose.yml` for starting the s3fs container with a simple command
-
-	docker-compose up -d
-
-You have to edit it first and set `AWSACCESSKEYID` and `AWSSECRETACCESSKEY` and replace `S3_BUCKET_NAME` with the name of your S3 bucket.
-
-For mounting the S3 folder into other containers, you have to define the host mount path as a volume. `volumes-from` does _not_ work with a FUSE-based mount.
-So this way the s3fs container mounts the S3 bucket to a folder on the host which is then mapped into other containers.
-
-### <a name="docker-engine-before-1.10" ></a> Docker engine before 1.10
-
-Before Docker version 1.10, s3fs mounted volumes (FUSE-based file system) in the container are not visiable from docker host through -v `<hostvol`>:`<s3fsvol`> option, nor from other containsers through --volumes-from `<containername`>.  However, you can still copy data out and make it available on the docker hosts and other containers.
-
-The following examples show how to start s3fs container with EC2 IAM role-based credential or with an IAM user that has permission to access your AWS s3 bucket.
-
-Note: You should not include _s3://_ in the bucket name, otherwise, you get _Transport endpoint is not connected error_.
-
-* Run the image with IAM role-based credential
-
-        docker pull xueshanf/s3fs
-        docker run --rm --name s3fs-container --cap-add mknod --cap-add sys_admin --device=/dev/fuse xueshanf/s3fs /usr/bin/s3fs -o allow_other -o use_cache=/tmp -o iam_role=<role name> <bucket> /mnt/mydata
-
-* Run the image as an IAM user
-
-		$ cat accessId:acessSecrect > /root/.s3fs
-		$ chmod 400 /root/.s3fs
-		$ docker run -v /root/.s3fs:/root/.s3fs --name s3fs-container --rm --cap-add mknod --cap-add sys_admin --device=/dev/fuse xueshanf/s3fs /usr/bin/s3fs -o allow_other -o use_cache=/tmp -o passwd_file=/root/.s3fs <bucket> /mnt/mydata
-
-Keep the container running in the above foreground window, start another terminal to run the following example operations.
-
-  * List file system and copy a file
-
- 		$ docker exec s3fs-container ls /mnt/mydata
- 		$ docker exec s3fs-container cat /mnt/mydata/file1 > /tmp/file1
-
-* Mount an entire bucket and copy files to a bind-mount volume _/opt/data_ on host:
-
-        $ docker run --rm --cap-add mknod --cap-add sys_admin --device=/dev/fuse -v /root/.s3fs:/root/.s3fs -v /opt/data:/data -it xueshanf/s3fs
-        root@88c090451cce:/# /usr/bin/s3fs -o allow_other -o use_cache=/tmp -o iam_role=controller mybucket /mnt/mydata
-        cp -r /mnt/mydata /data
-        umount /mnt/mydata
-        exit
-
-* Debugging mount problems
-
-         /usr/bin/s3fs -f -d -o allow_other -o use_cache=/tmp -o iam_role=<iam role> <bucket> <mountpoint>
-
-Note
+Environment variables
 ----
 
-  You need to add extra sys-capabilities to use fuse:
+This image uses environment variables to allow the configuration of some parameteres at run time:
 
-        --cap-add mknod --cap-add sys_admin --device=/dev/fuse
+* Variable name: `FTP_USER`
+* Default value: admin
+* Accepted values: Any string. Avoid whitespaces and special chars.
+* Description: Username for the default FTP account. If you don't specify it through the `FTP_USER` environment variable at run time, `admin` will be used by default.
 
-  You can always run it with `--privileged`.  However this should be avoided if possible.  Run with the more restricted set above.
+----
 
-  See [Issue 6616](https://github.com/docker/docker/issues/6616).
+* Variable name: `FTP_PASS`
+* Default value: Random string.
+* Accepted values: Any string.
+* Description: If you don't specify a password for the default FTP account through `FTP_PASS`, a 16 characters random string will be automatically generated. You can obtain this value through the [container logs](https://docs.docker.com/reference/commandline/logs/).
 
-[s3fs]: https://github.com/s3fs-fuse/s3fs-fuse
+----
+
+* Variable name: `PASV_ADDRESS_ENABLE`
+* Default value: NO
+* Accepted values: <NO|YES>
+* Description: Enables / Disables Passive Mode
+
+----
+
+* Variable name: `PASV_ADDRESS_RESOLVE`
+* Default value: YES
+* Accepted values: <NO|YES>
+* Description: Set to YES if you want to use a hostname (as opposed to IP address) in the `PASV_ADDRESS` option.
+
+----
+
+* Variable name: `PASV_ADDRESS`
+* Default value: Docker host IP / Hostname.
+* Accepted values: Any IPv4 address or Hostname (see PASV_ADDRESS_RESOLVE).
+* Description: If you don't specify an IP address to be used in passive mode, the routed IP address of the Docker host will be used. Bear in mind that this could be a local address.
+
+----
+
+* Variable name: `PASV_ADDR_RESOLVE`
+* Default value: NO.
+* Accepted values: YES or NO.
+* Description: Set to YES if you want to use a hostname (as opposed to IP address) in the PASV_ADDRESS option.
+
+----
+
+* Variable name: `PASV_ENABLE`
+* Default value: YES.
+* Accepted values: YES or NO.
+* Description: Set to NO if you want to disallow the PASV method of obtaining a data connection.
+
+----
+
+* Variable name: `PASV_MIN_PORT`
+* Default value: 21100.
+* Accepted values: Any valid port number.
+* Description: This will be used as the lower bound of the passive mode port range. Remember to publish your ports with `docker -p` parameter.
+
+----
+
+* Variable name: `PASV_MAX_PORT`
+* Default value: 21110.
+* Accepted values: Any valid port number.
+* Description: This will be used as the upper bound of the passive mode port range. It will take longer to start a container with a high number of published ports.
+
+----
+
+* Variable name: `LOG_STDOUT`
+* Default value: Empty string.
+* Accepted values: Any string to enable, empty string or not defined to disable.
+* Description: Output vsftpd log through STDOUT, so that it can be accessed through the [container logs](https://docs.docker.com/reference/commandline/logs/).
+
+----
+
+* Variable name: `FILE_OPEN_MODE`
+* Default value: 0666.
+* Accepted values: File system permissions.
+* Description: The permissions with which uploaded files are created. Umasks are applied on top of this value. You may wish to change to 0777 if you want uploaded files to be executable.
+
+----
+
+* Variable name: `LOCAL_UMASK`
+* Default value: 077.
+* Accepted values: File system permissions.
+* Description: The value that the umask for file creation is set to for local users. NOTE! If you want to specify octal values, remember the "0" prefix otherwise the value will be treated as a base 10 integer!
+
+----
+
+Exposed ports and volumes
+----
+
+The image exposes ports `20` and `21`. Also, exports two volumes: `/home/vsftpd`, which contains users home directories, and `/var/log/vsftpd`, used to store logs.
+
+When sharing a homes directory between the host and the container (`/home/vsftpd`) the owner user id and group id should be 14 and 80 respectively. This correspond ftp user and ftp group on the container, but may match something else on the host.
+
+Use cases
+----
+
+1) Create a temporary container for testing purposes:
+
+```bash
+  docker run --rm fauria/vsftpd
+```
+
+2) Create a container in active mode using the default user account, with a binded data directory:
+
+```bash
+docker run -d -p 21:21 -v /my/data/directory:/home/vsftpd --name vsftpd fauria/vsftpd
+# see logs for credentials:
+docker logs vsftpd
+```
+
+3) Create a **production container** with a custom user account, binding a data directory and enabling both active and passive mode:
+
+```bash
+docker run -d -v /my/data/directory:/home/vsftpd \
+-p 20:20 -p 21:21 -p 21100-21110:21100-21110 \
+-e FTP_USER=myuser -e FTP_PASS=mypass \
+-e PASV_ADDRESS=127.0.0.1 -e PASV_MIN_PORT=21100 -e PASV_MAX_PORT=21110 \
+--name vsftpd --restart=always fauria/vsftpd
+```
+
+4) Manually add a new FTP user to an existing container:
+```bash
+docker exec -i -t vsftpd bash
+mkdir /home/vsftpd/myuser
+echo -e "myuser\nmypass" >> /etc/vsftpd/virtual_users.txt
+/usr/bin/db_load -T -t hash -f /etc/vsftpd/virtual_users.txt /etc/vsftpd/virtual_users.db
+exit
+docker restart vsftpd
+```
