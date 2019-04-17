@@ -3,8 +3,6 @@ FROM centos:7
 ARG USER_ID=14
 ARG GROUP_ID=50
 
-ENV S3_FUSE_VERSION 1.85
-
 MAINTAINER Carlos Omaña <clopatofsky@gmail.com>
 LABEL Description="vsftpd Docker image based on Centos 7. Supports passive mode and virtual users. Filesystem backed with s3fs (AWS S3)" \
 	License="Apache License 2.0" \
