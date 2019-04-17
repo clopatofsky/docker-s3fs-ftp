@@ -17,6 +17,21 @@ else
     export LOG_STDOUT='Yes.'
 fi
 
+# If no env var has been specified, generate a random password for S3_BUCKET:
+if [ "$S3_BUCKET" = "**String**" ]; then
+    export S3_BUCKET='ftp-bucket-fuse'
+fi
+
+# If no env var has been specified, generate a random password for IAM_ROLE:
+if [ "$IAM_ROLE" = "**String**" ]; then
+    export IAM_ROLE='S3FS-Role'
+fi
+
+# If no env var has been specified, generate a random password for S3_ENDPOINT:
+if [ "$S3_ENDPOINT" = "**String**" ]; then
+    export S3_ENDPOINT='https://s3.us-east-1.amazonaws.com'
+fi
+
 # Create home dir and update vsftpd user db:
 mkdir -p "/home/vsftpd/${FTP_USER}"
 chown -R ftp:ftp /home/vsftpd/
@@ -43,23 +58,30 @@ export LOG_FILE=`grep xferlog_file /etc/vsftpd/vsftpd.conf|cut -d= -f2`
 # stdout server info:
 if [ ! $LOG_STDOUT ]; then
 cat << EOB
-	*************************************************
-	*                                               *
-	*    Docker image: fauria/vsftd                 *
-	*    https://github.com/fauria/docker-vsftpd    *
-	*                                               *
-	*************************************************
+	********************************************************
+	*                                                      *
+	*    Docker image: clopatofsky/docker-s3fs-ftp         *
+	*    https://github.com/clopatofsky/docker-s3fs-ftp    *
+	*                                                      *
+	********************************************************
 
 	SERVER SETTINGS
 	---------------
 	· FTP User: $FTP_USER
 	· FTP Password: $FTP_PASS
 	· Log file: $LOG_FILE
+	· IAM Role: $IAM_ROLE
+	· S3 bucket: $S3_BUCKET
+	· S3 endpoint: $S3_ENDPOINT
 	· Redirect vsftpd log to STDOUT: No.
 EOB
 else
     /usr/bin/ln -sf /dev/stdout $LOG_FILE
 fi
 
+# Run s3fs:
+/usr/local/bin/s3fs ${S3_BUCKET} -o use_cache=/tmp,iam_role=${IAM_ROLE},allow_other /home/vsftpd/${FTP_USER} -o url=${S3_ENDPOINT}
+
 # Run vsftpd:
 &>/dev/null /usr/sbin/vsftpd /etc/vsftpd/vsftpd.conf
+

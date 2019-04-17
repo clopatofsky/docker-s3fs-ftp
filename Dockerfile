@@ -5,10 +5,10 @@ ARG GROUP_ID=50
 
 ENV S3_FUSE_VERSION 1.85
 
-MAINTAINER Fer Uria <fauria@gmail.com>
-LABEL Description="vsftpd Docker image based on Centos 7. Supports passive mode and virtual users." \
+MAINTAINER Carlos Omaña <clopatofsky@gmail.com>
+LABEL Description="vsftpd Docker image based on Centos 7. Supports passive mode and virtual users. Filesystem backed with s3fs (AWS S3)" \
 	License="Apache License 2.0" \
-	Usage="docker run -d -p [HOST PORT NUMBER]:21 -v [HOST FTP HOME]:/home/vsftpd fauria/vsftpd" \
+	Usage="docker run -d -p [HOST PORT NUMBER]:21 -v [HOST FTP HOME]:/home/vsftpd clopatofsky/docker-s3fs-ftp" \
 	Version="1.0"
 
 RUN yum -y update && yum clean all
